@@ -4,6 +4,8 @@ WORKDIR /data/www
 
 COPY ./*.py ./
 COPY ./requirements.txt ./
+COPY ./static ./static
+COPY ./templates ./templates
 
 RUN pip cache purge
 RUN pip install --no-cache-dir -r requirements.txt

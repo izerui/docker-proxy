@@ -2,6 +2,7 @@
 * `pip install fastapi`
 * `pip install uvicorn[standard]`
 * `pip install aiohttp`
+* `pip install jinja2`
 
 
 依赖管理:

@@ -4,6 +4,8 @@ import aiohttp
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from starlette.responses import HTMLResponse
+from starlette.staticfiles import StaticFiles
+from starlette.templating import Jinja2Templates
 
 app = FastAPI(
     title='docker代理',
@@ -16,17 +18,29 @@ app = FastAPI(
     }
 )
 
-TARGET_URL = "https://harbor.yj2025.com/"  # 替换为你要重定向的目标地址
+app.mount("/rag/static", StaticFiles(directory="static"), name="static")
+
+templates = Jinja2Templates(directory="templates")
+
+my_domain = 'serv999.com'
+
+
+@app.get("/", response_class=HTMLResponse)
+async def read_item(request: Request):
+    return templates.TemplateResponse(
+        request=request, name="help.html", context={"my_domain": my_domain}
+    )
+
 
 image_mirros = {
-    'https://docker.serv999.com/': 'https://registry-1.docker.io/',
-    'https://quay.serv999.com/': 'https://quay.io/',
-    'https://gcr.serv999.com/': 'https://gcr.io/',
-    'https://k8s-gcr.serv999.com/': 'https://k8s.gcr.io/',
-    'https://k8s.serv999.com/': 'https://registry.k8s.io/',
-    'https://ghcr.serv999.com/': 'https://ghcr.io/',
-    'https://cloudsmith.serv999.com/': 'https://docker.cloudsmith.io/',
-    'https://ecr.serv999.com/': 'https://public.ecr.aws/',
+    f'https://docker.{my_domain}/': 'https://registry-1.docker.io/',
+    f'https://quay.{my_domain}/': 'https://quay.io/',
+    f'https://gcr.{my_domain}/': 'https://gcr.io/',
+    f'https://k8s-gcr.{my_domain}/': 'https://k8s.gcr.io/',
+    f'https://k8s.{my_domain}/': 'https://registry.k8s.io/',
+    f'https://ghcr.{my_domain}/': 'https://ghcr.io/',
+    f'https://cloudsmith.{my_domain}/': 'https://docker.cloudsmith.io/',
+    f'https://ecr.{my_domain}/': 'https://public.ecr.aws/',
 }
 
 
@@ -35,8 +49,13 @@ async def proxy_middleware(request: Request, call_next):
     try:
 
         logging.info(f'---> {request.method.lower()}: {request.url} headers: {request.headers}')
+        target_url = str(request.url)
         # 构建目标 URL，包括查询字符串
-        target_url = str(request.url).replace(str(request.base_url), TARGET_URL)
+        replace_base_url = image_mirros.get(str(request.base_url), None)
+        if not replace_base_url:
+            return await call_next(request)
+
+        target_url = target_url.replace(str(request.base_url), replace_base_url)
 
         # 使用 aiohttp 发送请求
         async with aiohttp.ClientSession() as session:
