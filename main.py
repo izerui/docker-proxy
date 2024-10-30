@@ -13,6 +13,14 @@ CUSTOM_DOMAIN = 'serv999.com'
 app.mount("/rag/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+
+@app.get("/help", response_class=HTMLResponse)
+async def read_item(request: Request):
+    return templates.TemplateResponse(
+        request=request, name="help.html", context={"my_domain": my_domain}
+    )
+
+
 routes = {
     # production
     f"docker.{CUSTOM_DOMAIN}": dockerHub,
@@ -72,9 +80,7 @@ async def handle_request(request: Request, call_next):
     url = request.url
     upstream = route_by_hosts(url.hostname)
     if not upstream:
-        return templates.TemplateResponse(
-            request=request, name="help.html", context={"my_domain": CUSTOM_DOMAIN}
-        )
+        return JSONResponse({"routes": routes}, status_code=404)
 
     is_docker_hub = upstream == dockerHub
     authorization = request.headers.get("Authorization")
