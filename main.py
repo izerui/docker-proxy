@@ -1,6 +1,7 @@
 import aiohttp
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.responses import HTMLResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
@@ -17,7 +18,7 @@ templates = Jinja2Templates(directory="templates")
 @app.get("/help", response_class=HTMLResponse)
 async def read_item(request: Request):
     return templates.TemplateResponse(
-        request=request, name="help.html", context={"my_domain": my_domain}
+        request=request, name="help.html", context={"my_domain": CUSTOM_DOMAIN}
     )
 
 
