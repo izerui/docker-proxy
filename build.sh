@@ -1,3 +1,3 @@
-docker build -f Dockerfile -t docker-proxy:1.4 .
-docker tag docker-proxy:1.4 izerui/docker-proxy:1.4
-docker push izerui/docker-proxy:1.4
+docker build -f Dockerfile -t docker-proxy .
+docker tag docker-proxy izerui/docker-proxy
+docker push izerui/docker-proxy
