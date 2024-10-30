@@ -19,6 +19,10 @@ CUSTOM_DOMAIN = os.getenv("CUSTOM_DOMAIN", "serv999.com")
 MODE = os.getenv("MODE", "production")
 TARGET_UPSTREAM = os.getenv("TARGET_UPSTREAM", "http://localhost:8000")
 
+# 从环境变量中获取代理 URL
+PROXY_URL = ''
+# PROXY_URL = os.getenv("PROXY_URL", "http://127.0.0.1:7890")
+
 # 定义主机名到上游服务器的路由映射
 routes = {
     # 生产环境
@@ -32,7 +36,7 @@ routes = {
     f"ecr.{CUSTOM_DOMAIN}": "https://public.ecr.aws",
 
     # 测试环境
-    f"docker-staging.{CUSTOM_DOMAIN}": dockerHub,
+    f"127.0.0.1": dockerHub,
 }
 
 
@@ -98,7 +102,7 @@ async def handle_request(request: Request, call_next):
         new_url = f"{upstream}/v2/"
         headers = {"Authorization": authorization} if authorization else {}
         async with aiohttp.ClientSession() as session:
-            async with session.get(new_url, headers=headers) as resp:
+            async with session.get(new_url, headers=headers, proxy=PROXY_URL) as resp:
                 if resp.status == 401:
                     return await response_unauthorized(url)
                 return Response(content=await resp.read(), status_code=resp.status, headers=dict(resp.headers))
@@ -107,7 +111,7 @@ async def handle_request(request: Request, call_next):
     if url.path == "/v2/auth":
         new_url = f"{upstream}/v2/"
         async with aiohttp.ClientSession() as session:
-            async with session.get(new_url) as resp:
+            async with session.get(new_url, proxy=PROXY_URL) as resp:
                 if resp.status != 401:
                     return Response(content=await resp.read(), status_code=resp.status, headers=dict(resp.headers))
                 authenticate_str = resp.headers.get("WWW-Authenticate")
@@ -135,7 +139,8 @@ async def handle_request(request: Request, call_next):
     new_url = f"{upstream}{url.path}"
     headers = dict(request.headers)
     async with aiohttp.ClientSession() as session:
-        async with session.request(method=request.method, url=new_url, headers=headers, allow_redirects=True) as resp:
+        async with session.request(method=request.method, url=new_url, headers=headers, allow_redirects=True,
+                                   proxy=PROXY_URL) as resp:
             if resp.status == 401:
                 return await response_unauthorized(url)
             try:
