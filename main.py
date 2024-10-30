@@ -1,97 +1,128 @@
-import logging
-
 import aiohttp
-from fastapi import FastAPI, Request
-from fastapi.responses import Response
-from starlette.responses import HTMLResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
-app = FastAPI(
-    title='docker代理',
-    summary='docker代理',
-    description='docker代理仓库',
-    version='1.0',
-    license_info={
-        "name": "Apache 2.0",
-        "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
-    }
-)
+app = FastAPI()
+
+dockerHub = "https://registry-1.docker.io"
+
+CUSTOM_DOMAIN = 'serv999.com'
 
 app.mount("/rag/static", StaticFiles(directory="static"), name="static")
-
 templates = Jinja2Templates(directory="templates")
 
-my_domain = 'serv999.com'
+routes = {
+    # production
+    f"docker.{CUSTOM_DOMAIN}": dockerHub,
+    f"quay.{CUSTOM_DOMAIN}": "https://quay.io",
+    f"gcr.{CUSTOM_DOMAIN}": "https://gcr.io",
+    f"k8s-gcr.{CUSTOM_DOMAIN}": "https://k8s.gcr.io",
+    f"k8s.{CUSTOM_DOMAIN}": "https://registry.k8s.io",
+    f"ghcr.{CUSTOM_DOMAIN}": "https://ghcr.io",
+    f"cloudsmith.{CUSTOM_DOMAIN}": "https://docker.cloudsmith.io",
+    f"ecr.{CUSTOM_DOMAIN}": "https://public.ecr.aws",
 
-
-@app.get("/", response_class=HTMLResponse)
-async def read_item(request: Request):
-    return templates.TemplateResponse(
-        request=request, name="help.html", context={"my_domain": my_domain}
-    )
-
-
-image_mirros = {
-    f'https://hub.{my_domain}/': 'https://hub.docker.com/',
-    f'https://docker.{my_domain}/': 'https://registry-1.docker.io/',
-    f'https://quay.{my_domain}/': 'https://quay.io/',
-    f'https://gcr.{my_domain}/': 'https://gcr.io/',
-    f'https://k8s-gcr.{my_domain}/': 'https://k8s.gcr.io/',
-    f'https://k8s.{my_domain}/': 'https://registry.k8s.io/',
-    f'https://ghcr.{my_domain}/': 'https://ghcr.io/',
-    f'https://cloudsmith.{my_domain}/': 'https://docker.cloudsmith.io/',
-    f'https://ecr.{my_domain}/': 'https://public.ecr.aws/',
+    # staging
+    f"docker-staging.{CUSTOM_DOMAIN}": dockerHub,
 }
 
 
+def route_by_hosts(host):
+    if host in routes:
+        return routes[host]
+    return ""
+
+
+async def fetch_token(www_authenticate, scope, authorization):
+    url = www_authenticate['realm']
+    params = {
+        "service": www_authenticate['service']
+    }
+    if scope:
+        params["scope"] = scope
+    headers = {}
+    if authorization:
+        headers["Authorization"] = authorization
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params, headers=headers) as resp:
+            return await resp.json()
+
+
+def parse_authenticate(authenticate_str):
+    parts = authenticate_str.split(',')
+    realm = parts[0].split('=')[1].strip('"')
+    service = parts[1].split('=')[1].strip('"')
+    return {
+        "realm": realm,
+        "service": service
+    }
+
+
+async def response_unauthorized(url):
+    headers = {
+        'WWW-Authenticate': f'Bearer realm="https://{url.netloc}/v2/auth",service="cloudflare-docker-proxy"'
+    }
+    return JSONResponse({"message": "UNAUTHORIZED"}, status_code=401, headers=headers)
+
+
 @app.middleware("http")
-async def proxy_middleware(request: Request, call_next):
-    try:
+async def handle_request(request: Request, call_next):
+    url = request.url
+    upstream = route_by_hosts(url.hostname)
+    if not upstream:
+        return templates.TemplateResponse(
+            request=request, name="help.html", context={"my_domain": CUSTOM_DOMAIN}
+        )
 
-        logging.info(f'---> {request.method.lower()}: {request.url} headers: {request.headers}')
-        target_url = str(request.url)
-        # 构建目标 URL，包括查询字符串
-        replace_base_url = image_mirros.get(str(request.base_url), None)
-        if not replace_base_url:
-            return await call_next(request)
+    is_docker_hub = upstream == dockerHub
+    authorization = request.headers.get("Authorization")
 
-        target_url = target_url.replace(str(request.base_url), replace_base_url)
-
-        # 使用 aiohttp 发送请求
+    if url.path == "/v2/":
+        new_url = f"{upstream}/v2/"
+        headers = {"Authorization": authorization} if authorization else {}
         async with aiohttp.ClientSession() as session:
-            # 获取请求方法
-            method = request.method.lower()
+            async with session.get(new_url, headers=headers) as resp:
+                if resp.status == 401:
+                    return await response_unauthorized(url)
+                return Response(content=await resp.read(), status_code=resp.status, headers=dict(resp.headers))
 
-            # 获取请求体
-            body = await request.body()
+    if url.path == "/v2/auth":
+        new_url = f"{upstream}/v2/"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(new_url) as resp:
+                if resp.status != 401:
+                    return Response(content=await resp.read(), status_code=resp.status, headers=dict(resp.headers))
+                authenticate_str = resp.headers.get("WWW-Authenticate")
+                if not authenticate_str:
+                    return Response(content=await resp.read(), status_code=resp.status, headers=dict(resp.headers))
+                www_authenticate = parse_authenticate(authenticate_str)
+                scope = request.query_params.get("scope")
+                if scope and is_docker_hub:
+                    scope_parts = scope.split(":")
+                    if len(scope_parts) == 3 and "/" not in scope_parts[1]:
+                        scope_parts[1] = f"library/{scope_parts[1]}"
+                        scope = ":".join(scope_parts)
+                token_response = await fetch_token(www_authenticate, scope, authorization)
+                return JSONResponse(token_response)
 
-            # 获取请求头
-            headers = {k: v for k, v in request.headers.items() if
-                       k in ["Authorization", "WWW-Authenticate"]}
+    if is_docker_hub:
+        path_parts = url.path.split("/")
+        if len(path_parts) == 5:
+            path_parts.insert(2, "library")
+            redirect_url = url.replace(path="/".join(path_parts))
+            return RedirectResponse(url=str(redirect_url), status_code=301)
 
-            logging.info(f'<--- {method}: {target_url} headers: {headers}')
-            # 发送请求到目标地址
-            async with session.request(method, target_url, headers=headers, data=body) as response:
-                # 获取响应内容
-                content = await response.read()
-
-                # 获取响应头
-                response_headers = dict(response.headers)
-
-                # 返回目标地址的响应
-                return Response(content=content, status_code=response.status, headers=response_headers)
-    except BaseException as e:
-        logging.exception(e)
-        return HTMLResponse(content=f'出错了: {repr(e)}', status_code=500)
+    new_url = f"{upstream}{url.path}"
+    headers = dict(request.headers)
+    async with aiohttp.ClientSession() as session:
+        async with session.request(method=request.method, url=new_url, headers=headers, allow_redirects=True) as resp:
+            if resp.status == 401:
+                return await response_unauthorized(url)
+            return Response(content=await resp.read(), status_code=resp.status, headers=dict(resp.headers))
 
 
-@app.get("/test")
-async def test():
-    return {"message": "This is a test endpoint"}
-
-
-# 运行应用
 if __name__ == "__main__":
     import uvicorn
 
