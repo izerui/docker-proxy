@@ -7,6 +7,7 @@ COPY ./requirements.txt ./
 COPY ./static ./static
 COPY ./templates ./templates
 
+RUN pip config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple/
 RUN pip cache purge
 RUN pip install --no-cache-dir -r requirements.txt
 
