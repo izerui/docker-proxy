@@ -33,6 +33,7 @@ async def read_item(request: Request):
 
 
 image_mirros = {
+    f'https://hub.{my_domain}/': 'https://hub.docker.com/',
     f'https://docker.{my_domain}/': 'https://registry-1.docker.io/',
     f'https://quay.{my_domain}/': 'https://quay.io/',
     f'https://gcr.{my_domain}/': 'https://gcr.io/',
