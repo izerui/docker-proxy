@@ -2,6 +2,7 @@
 * `pip install fastapi`
 * `pip install uvicorn[standard]`
 * `pip install aiohttp`
+* `pip install aiohttp-socks`
 * `pip install jinja2`
 
 

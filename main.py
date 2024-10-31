@@ -2,6 +2,7 @@ import logging
 import os
 
 import aiohttp
+from aiohttp_socks import ProxyConnector
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -20,8 +21,8 @@ MODE = os.getenv("MODE", "production")
 TARGET_UPSTREAM = os.getenv("TARGET_UPSTREAM", "http://localhost:8000")
 
 # 从环境变量中获取代理 URL
-PROXY_URL = ''
-# PROXY_URL = os.getenv("PROXY_URL", "http://127.0.0.1:7890")
+PROXY_URL = None
+# PROXY_URL = os.getenv("PROXY_URL", "socks5://127.0.0.1:7890")
 
 # 定义主机名到上游服务器的路由映射
 routes = {
@@ -36,7 +37,7 @@ routes = {
     f"ecr.{CUSTOM_DOMAIN}": "https://public.ecr.aws",
 
     # 测试环境
-    f"127.0.0.1": dockerHub,
+    f"docker.yj2025.com": dockerHub,
 }
 
 
@@ -60,7 +61,8 @@ async def fetch_token(www_authenticate, scope, authorization):
     headers = {}
     if authorization:
         headers["Authorization"] = authorization
-    async with aiohttp.ClientSession() as session:
+    connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
+    async with aiohttp.ClientSession(connector=connector) as session:
         async with session.get(url, params=params, headers=headers) as resp:
             return await resp.json()
 
@@ -101,8 +103,9 @@ async def handle_request(request: Request, call_next):
     if url.path == "/v2/":
         new_url = f"{upstream}/v2/"
         headers = {"Authorization": authorization} if authorization else {}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(new_url, headers=headers, proxy=PROXY_URL) as resp:
+        connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.get(new_url, headers=headers) as resp:
                 if resp.status == 401:
                     return await response_unauthorized(url)
                 return Response(content=await resp.read(), status_code=resp.status, headers=dict(resp.headers))
@@ -110,8 +113,9 @@ async def handle_request(request: Request, call_next):
     # 处理 /v2/auth 路径
     if url.path == "/v2/auth":
         new_url = f"{upstream}/v2/"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(new_url, proxy=PROXY_URL) as resp:
+        connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.get(new_url) as resp:
                 if resp.status != 401:
                     return Response(content=await resp.read(), status_code=resp.status, headers=dict(resp.headers))
                 authenticate_str = resp.headers.get("WWW-Authenticate")
@@ -138,11 +142,19 @@ async def handle_request(request: Request, call_next):
     # 转发其他请求
     new_url = f"{upstream}{url.path}"
     headers = dict(request.headers)
-    async with aiohttp.ClientSession() as session:
-        async with session.request(method=request.method, url=new_url, headers=headers, allow_redirects=True,
-                                   proxy=PROXY_URL) as resp:
-            if resp.status == 401:
-                return await response_unauthorized(url)
+    if 'host' in headers:
+        del headers["host"]
+    if 'x-real-ip' in headers:
+        del headers["x-real-ip"]
+    if 'x-forwarded-for' in headers:
+        del headers["x-forwarded-for"]
+    if 'x-forwarded-proto' in headers:
+        del headers["x-forwarded-proto"]
+    connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
+    async with aiohttp.ClientSession(connector=connector) as session:
+        async with session.request(method=request.method, url=new_url, headers=headers, allow_redirects=True) as resp:
+            # if resp.status == 401:
+            #     return await response_unauthorized(url)
             try:
                 content = await resp.read()
                 return Response(content=content, status_code=resp.status, headers=dict(resp.headers))
