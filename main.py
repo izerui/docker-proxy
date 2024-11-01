@@ -21,10 +21,16 @@ CUSTOM_DOMAIN = os.getenv("CUSTOM_DOMAIN", "serv999.com")
 # 从环境变量中获取代理 URL
 PROXY_URL = os.getenv("PROXY_URL", None)
 
+# 环境
+PROFILE = os.getenv("PROFILE", 'production')
+
+# 定义中央仓库
+cus_docker_hub_domain =  f"docker.{CUSTOM_DOMAIN}/token" if PROFILE == 'production' else f"chatpy-dev.{CUSTOM_DOMAIN}"
+
 # 代理转发路径前缀匹配规则
 routes = {
-    # 生产环境
-    f"docker.{CUSTOM_DOMAIN}": "https://registry-1.docker.io",
+    f"{cus_docker_hub_domain}/token": "https://auth.docker.io/token",
+    f"{cus_docker_hub_domain}": "https://registry-1.docker.io",
     f"quay.{CUSTOM_DOMAIN}": "https://quay.io",
     f"gcr.{CUSTOM_DOMAIN}": "https://gcr.io",
     f"k8s-gcr.{CUSTOM_DOMAIN}": "https://k8s.gcr.io",
@@ -32,8 +38,6 @@ routes = {
     f"ghcr.{CUSTOM_DOMAIN}": "https://ghcr.io",
     f"cloudsmith.{CUSTOM_DOMAIN}": "https://docker.cloudsmith.io",
     f"ecr.{CUSTOM_DOMAIN}": "https://public.ecr.aws",
-    f"chatpy-dev.{CUSTOM_DOMAIN}/token": "https://auth.docker.io/token",
-    f"chatpy-dev.{CUSTOM_DOMAIN}": "https://registry-1.docker.io",
 }
 
 # 白名单路径不进行转发
@@ -47,6 +51,7 @@ reserved_headers = [
     'authorization',
     'accept',
 ]
+
 
 def is_docker_hub_pull(method, url):
     return method == 'get' and url.startswith("https://registry-1.docker.io/")
@@ -77,8 +82,8 @@ async def handle_request(request: Request, call_next):
     logging.info(f'接收到请求\n【{method}】: {url} \n【headers】: {headers}\n【content】:{body}')
 
     # 白名单中的path不进行转发
-    # if request.url.path in path_whitelist:
-    #     return await call_next(request)
+    if request.url.path in path_whitelist:
+        return await call_next(request)
 
     for route in routes:
         route_url = f'{request.url.scheme}://{route}'
