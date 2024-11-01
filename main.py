@@ -166,7 +166,7 @@ async def handle_request(request: Request, call_next):
             # 只有基础镜像切割后分成3块，大于3的都是带了前缀的
             if len(path_parts) == 3:
                 path_parts[0] = f'library/{path_parts[0]}'
-                url = quote(f'{docker_registry_prefix_url}{"/".join(path_parts)}')
+                url = f'{docker_registry_prefix_url}{"/".join(path_parts)}'
             pass
 
         connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
