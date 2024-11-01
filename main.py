@@ -1,5 +1,6 @@
 import logging
 import os
+from urllib.parse import unquote, quote
 
 import aiohttp
 from aiohttp_socks import ProxyConnector
@@ -79,10 +80,11 @@ async def handle_request(request: Request, call_next):
     headers = dict(request.headers)
     proxy = False
 
-    logging.info(f'接收到请求\n【{method}】: {url} \n【headers】: {headers}\n【content】:{body}')
+    logging.info(f'接收到请求\n【{method}】: {url} \n【headers】: {headers}')
 
     # 白名单中的path不进行转发
     if request.url.path in path_whitelist:
+        logging.info(f'未代理转发\n【{method}】: {url} \n【headers】: {headers}')
         return await call_next(request)
 
     for route in routes:
@@ -98,7 +100,33 @@ async def handle_request(request: Request, call_next):
     # 过滤headers保留reserved_headers中的key
     headers = {key: headers[key] for key in reserved_headers if key in headers}
 
-    logging.info(f'代理转发\n【{method}】: {url} \n【headers】: {headers}\n【content】:{body}')
+    # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全
+    # Example: repository:busybox:pull => repository:library/busybox:pull
+    if url.startswith('https://auth.docker.io/token'):
+        if request.scope['query_string']:
+            query_string = request.scope['query_string'].decode('utf-8')
+            query_string = unquote(query_string)
+            splits = query_string.split(':')
+            if len(splits) == 3 and '/' not in splits[1]:
+                splits[1] = f'library/{splits[1]}'
+            new_query_string = ':'.join(splits)
+            new_query_string = quote(new_query_string)
+            url = f'https://auth.docker.io/token?{new_query_string}'
+
+    # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
+    # https://registry-1.docker.io/v2/nginx/manifests/latest
+    # Example: /v2/busybox/manifests/latest => /v2/library/busybox/manifests/latest
+    docker_registry_prefix_url = 'https://registry-1.docker.io/v2/'
+    if url.startswith(docker_registry_prefix_url) and len(url) > len(docker_registry_prefix_url):
+        _url = url.replace(docker_registry_prefix_url, '')
+        path_parts = _url.split('/')
+        # 只有基础镜像切割后分成3块，大于3的都是带了前缀的
+        if len(path_parts) == 3:
+            path_parts[0] = f'library/{path_parts[0]}'
+            url = f'{docker_registry_prefix_url}{"/".join(path_parts)}'
+        pass
+
+    logging.info(f'代理转发\n【{method}】: {url} \n【headers】: {headers}')
     connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
     async with (aiohttp.ClientSession(connector=connector) as session):
         async with session.request(method=request.method, url=url, headers=headers, data=body,
@@ -122,7 +150,7 @@ async def handle_request(request: Request, call_next):
                 if 'Transfer-Encoding' in response_headers:
                     del response_headers['Transfer-Encoding']
                 logging.info(
-                    f'返回结果\n【{method}】: {url}\n【headers】: {response_headers}\n【content】:{response_body}')
+                    f'返回结果\n【{method}】: {url}\n【headers】: {response_headers}\n')
                 return Response(content=response_body, status_code=resp.status, headers=response_headers)
             except Exception as e:
                 logger.error(f"Error processing response: {e}")
