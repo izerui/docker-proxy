@@ -153,7 +153,7 @@ async def handle_request(request: Request, call_next):
                 if len(splits) == 3 and '/' not in splits[1]:
                     splits[1] = f'library/{splits[1]}'
                     new_query_string = ':'.join(splits)
-                    # new_query_string = quote(new_query_string)
+                    new_query_string = quote(new_query_string)
                     url = f'https://auth.docker.io/token?{new_query_string}'
 
         # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
