@@ -153,8 +153,8 @@ async def handle_request(request: Request, call_next):
                 if len(splits) == 3 and '/' not in splits[1]:
                     splits[1] = f'library/{splits[1]}'
                     new_query_string = ':'.join(splits)
-                    new_query_string = quote(new_query_string)
-                    url = f'https://auth.docker.io/token?{new_query_string}'
+                    # new_query_string = quote(new_query_string)
+                    url = quote(f'https://auth.docker.io/token?{new_query_string}')
 
         # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
         # https://registry-1.docker.io/v2/nginx/manifests/latest
@@ -166,7 +166,7 @@ async def handle_request(request: Request, call_next):
             # 只有基础镜像切割后分成3块，大于3的都是带了前缀的
             if len(path_parts) == 3:
                 path_parts[0] = f'library/{path_parts[0]}'
-                url = f'{docker_registry_prefix_url}{"/".join(path_parts)}'
+                url = quote(f'{docker_registry_prefix_url}{"/".join(path_parts)}')
             pass
 
         connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
