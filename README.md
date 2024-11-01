@@ -4,6 +4,7 @@
 * `pip install aiohttp`
 * `pip install aiohttp-socks`
 * `pip install jinja2`
+* `pip install pyjwt`
 
 
 依赖管理:

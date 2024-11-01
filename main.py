@@ -3,6 +3,7 @@ import os
 from urllib.parse import unquote, quote
 
 import aiohttp
+from aiohttp import ClientTimeout
 from aiohttp_socks import ProxyConnector
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -60,7 +61,6 @@ ignore_headers = [
     'x-real-ip',
     'x-forwarded-for',
     'x-forwarded-proto',
-    'connection',
 ]
 
 
@@ -140,7 +140,10 @@ async def handle_request(request: Request, call_next):
 
     logging.info(f'代理转发\n【{method}】: {url} \n【headers】: {headers}')
     connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
-    async with (aiohttp.ClientSession(connector=connector) as session):
+    async with (aiohttp.ClientSession(
+            connector=connector,
+            timeout=ClientTimeout(total=300, connect=60, sock_read=300, sock_connect=300, ceil_threshold=5),
+    ) as session):
         async with session.request(method=request.method, url=url, headers=headers, data=body,
                                    allow_redirects=True) as resp:
             try:
