@@ -11,4 +11,4 @@ RUN pip config set global.index-url https://mirrors.cloud.tencent.com/pypi/simpl
 RUN pip cache purge
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["uvicorn", "main:app","--port", "8000",  "--host", "0.0.0.0", "--timeout-keep-alive", "60", "--workers", "8"]
+CMD ["uvicorn", "main:app","--port", "8000",  "--host", "0.0.0.0", "--timeout-keep-alive", "60", "--workers", "4"]

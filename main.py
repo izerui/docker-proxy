@@ -108,6 +108,7 @@ def valid_jwt_and_remove_from_headers(headers):
             print("JWT 令牌无效")
     return headers
 
+# 碰到的问题: https://github.com/docker/hub-feedback/issues/1636
 # 处理所有传入的请求
 @app.middleware("http")
 async def handle_request(request: Request, call_next):
@@ -120,7 +121,7 @@ async def handle_request(request: Request, call_next):
         headers = dict(request.headers)
         proxy = False
 
-        logging.info(f'接收到请求\n【{method}】: {url} \n【headers】: {headers}')
+        logging.info(f'接收请求\n【{method}】: {url} \n【headers】: {headers}')
 
         # 白名单中的path不进行转发
         if request.url.path in path_whitelist:
@@ -154,7 +155,7 @@ async def handle_request(request: Request, call_next):
                 if len(splits) == 3 and '/' not in splits[1]:
                     splits[1] = f'library/{splits[1]}'
                     new_query_string = ':'.join(splits)
-                    new_query_string = quote(new_query_string)
+                    # new_query_string = quote(new_query_string)
                     url = f'https://auth.docker.io/token?{new_query_string}'
 
         # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
@@ -170,11 +171,10 @@ async def handle_request(request: Request, call_next):
                 url = f'{docker_registry_prefix_url}{"/".join(path_parts)}'
             pass
 
-        logging.info(f'代理转发\n【{method}】: {url} \n【headers】: {headers}')
         connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
         async with (aiohttp.ClientSession(
                 connector=connector,
-                timeout=ClientTimeout(total=300, connect=60, sock_read=300, sock_connect=300, ceil_threshold=5),
+                timeout=ClientTimeout(total=300, connect=60, sock_read=300, sock_connect=300, ceil_threshold=300),
         ) as session):
             async with session.request(method=request.method, url=url, headers=headers, data=body,
                                        allow_redirects=True) as resp:
@@ -196,7 +196,8 @@ async def handle_request(request: Request, call_next):
                     # 删除分段传输的头, 这里应该有nginx转发来自动判断是否添加，原始服务器返回的该头针对当前nginx代理不一定匹配
                     if 'Transfer-Encoding' in response_headers:
                         del response_headers['Transfer-Encoding']
-                    logging.info(f'返回结果 【{resp.status}】\n【{method}】: {url}\n【headers】: {response_headers}')
+                    logging.info(
+                        f'代理转发 【{resp.status}】\n【{method}】: {url}\n【request-headers】:{headers}\n【response-headers】: {response_headers}')
                     # logging.info(f'返回结果\n【{method}】: {url}\n【headers】: {response_headers}\n【content】: {response_body}')
                     return Response(content=response_body, status_code=resp.status, headers=response_headers)
                 except Exception as e:
