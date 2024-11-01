@@ -25,7 +25,7 @@ PROXY_URL = os.getenv("PROXY_URL", None)
 PROFILE = os.getenv("PROFILE", 'production')
 
 # 定义中央仓库
-cus_docker_hub_domain =  f"docker.{CUSTOM_DOMAIN}/token" if PROFILE == 'production' else f"chatpy-dev.{CUSTOM_DOMAIN}"
+cus_docker_hub_domain =  f"docker.{CUSTOM_DOMAIN}" if PROFILE == 'production' else f"chatpy-dev.{CUSTOM_DOMAIN}"
 
 # 代理转发路径前缀匹配规则
 routes = {
