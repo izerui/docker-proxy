@@ -82,94 +82,97 @@ async def read_item(request: Request):
 # 处理所有传入的请求
 @app.middleware("http")
 async def handle_request(request: Request, call_next):
-    # 获取请求体
-    method = request.method.lower()
-    url = str(request.url)
-    body = await request.body()
-    # 原始字典
-    headers = dict(request.headers)
-    proxy = False
+    try:
+        # 获取请求体
+        method = request.method.lower()
+        url = str(request.url)
+        body = await request.body()
+        # 原始字典
+        headers = dict(request.headers)
+        proxy = False
 
-    logging.info(f'接收到请求\n【{method}】: {url} \n【headers】: {headers}')
+        logging.info(f'接收到请求\n【{method}】: {url} \n【headers】: {headers}')
 
-    # 白名单中的path不进行转发
-    if request.url.path in path_whitelist:
-        logging.info(f'未代理转发\n【{method}】: {url} \n【headers】: {headers}')
-        return await call_next(request)
+        # 白名单中的path不进行转发
+        if request.url.path in path_whitelist:
+            logging.info(f'未代理转发\n【{method}】: {url} \n【headers】: {headers}')
+            return await call_next(request)
 
-    for route in routes:
-        route_url = f'{request.url.scheme}://{route}'
-        if url.startswith(route_url):
-            proxy = True
-            url = url.replace(route_url, routes[route])
+        for route in routes:
+            route_url = f'{request.url.scheme}://{route}'
+            if url.startswith(route_url):
+                proxy = True
+                url = url.replace(route_url, routes[route])
+                pass
+
+        if not proxy:
+            return await call_next(request)
+
+        # 过滤headers保留reserved_headers中的key
+        # headers = {key: headers[key] for key in reserved_headers if key in headers}
+        # 过滤headers忽略ignore_headers中的key
+        headers = {key: value for key, value in headers.items() if key not in ignore_headers}
+
+        # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全
+        # Example: repository:busybox:pull => repository:library/busybox:pull
+        if url.startswith('https://auth.docker.io/token'):
+            if request.scope['query_string']:
+                query_string = request.scope['query_string'].decode('utf-8')
+                query_string = unquote(query_string)
+                splits = query_string.split(':')
+                if len(splits) == 3 and '/' not in splits[1]:
+                    splits[1] = f'library/{splits[1]}'
+                    new_query_string = ':'.join(splits)
+                    new_query_string = quote(new_query_string)
+                    url = f'https://auth.docker.io/token?{new_query_string}'
+
+        # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
+        # https://registry-1.docker.io/v2/nginx/manifests/latest
+        # Example: /v2/busybox/manifests/latest => /v2/library/busybox/manifests/latest
+        docker_registry_prefix_url = 'https://registry-1.docker.io/v2/'
+        if url.startswith(docker_registry_prefix_url) and len(url) > len(docker_registry_prefix_url):
+            _url = url.replace(docker_registry_prefix_url, '')
+            path_parts = _url.split('/')
+            # 只有基础镜像切割后分成3块，大于3的都是带了前缀的
+            if len(path_parts) == 3:
+                path_parts[0] = f'library/{path_parts[0]}'
+                url = f'{docker_registry_prefix_url}{"/".join(path_parts)}'
             pass
 
-    if not proxy:
-        return await call_next(request)
-
-    # 过滤headers保留reserved_headers中的key
-    # headers = {key: headers[key] for key in reserved_headers if key in headers}
-    # 过滤headers忽略ignore_headers中的key
-    headers = {key: value for key, value in headers.items() if key not in ignore_headers}
-
-    # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全
-    # Example: repository:busybox:pull => repository:library/busybox:pull
-    if url.startswith('https://auth.docker.io/token'):
-        if request.scope['query_string']:
-            query_string = request.scope['query_string'].decode('utf-8')
-            query_string = unquote(query_string)
-            splits = query_string.split(':')
-            if len(splits) == 3 and '/' not in splits[1]:
-                splits[1] = f'library/{splits[1]}'
-                new_query_string = ':'.join(splits)
-                new_query_string = quote(new_query_string)
-                url = f'https://auth.docker.io/token?{new_query_string}'
-
-    # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
-    # https://registry-1.docker.io/v2/nginx/manifests/latest
-    # Example: /v2/busybox/manifests/latest => /v2/library/busybox/manifests/latest
-    docker_registry_prefix_url = 'https://registry-1.docker.io/v2/'
-    if url.startswith(docker_registry_prefix_url) and len(url) > len(docker_registry_prefix_url):
-        _url = url.replace(docker_registry_prefix_url, '')
-        path_parts = _url.split('/')
-        # 只有基础镜像切割后分成3块，大于3的都是带了前缀的
-        if len(path_parts) == 3:
-            path_parts[0] = f'library/{path_parts[0]}'
-            url = f'{docker_registry_prefix_url}{"/".join(path_parts)}'
-        pass
-
-    logging.info(f'代理转发\n【{method}】: {url} \n【headers】: {headers}')
-    connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
-    async with (aiohttp.ClientSession(
-            connector=connector,
-            timeout=ClientTimeout(total=300, connect=60, sock_read=300, sock_connect=300, ceil_threshold=5),
-    ) as session):
-        async with session.request(method=request.method, url=url, headers=headers, data=body,
-                                   allow_redirects=True) as resp:
-            try:
-                response_headers = dict(resp.headers)
-                response_body = await resp.read()
-                # 返回:
-                # HTTP/1.1 401 Unauthorized
-                # Content-Type: application/json
-                # WWW-Authenticate: Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:library/nginx:pull"
-                if 'WWW-Authenticate' in response_headers:
-                    www_auth = response_headers['WWW-Authenticate']
-                    for key, value in routes.items():
-                        if value == "https://auth.docker.io/token":
-                            # 将返回的realm的域名替换为代理域名
-                            www_auth = www_auth.replace(value, f'https://{key}')
-                            response_headers['WWW-Authenticate'] = www_auth
-                            break
-                # 删除分段传输的头, 这里应该有nginx转发来自动判断是否添加，原始服务器返回的该头针对当前nginx代理不一定匹配
-                if 'Transfer-Encoding' in response_headers:
-                    del response_headers['Transfer-Encoding']
-                logging.info(f'返回结果 【{resp.status}】\n【{method}】: {url}\n【headers】: {response_headers}')
-                # logging.info(f'返回结果\n【{method}】: {url}\n【headers】: {response_headers}\n【content】: {response_body}')
-                return Response(content=response_body, status_code=resp.status, headers=response_headers)
-            except Exception as e:
-                logger.error(f"Error processing response: {e}")
-                return JSONResponse({"error": "Internal Server Error"}, status_code=500)
+        logging.info(f'代理转发\n【{method}】: {url} \n【headers】: {headers}')
+        connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
+        async with (aiohttp.ClientSession(
+                connector=connector,
+                timeout=ClientTimeout(total=300, connect=60, sock_read=300, sock_connect=300, ceil_threshold=5),
+        ) as session):
+            async with session.request(method=request.method, url=url, headers=headers, data=body,
+                                       allow_redirects=True) as resp:
+                try:
+                    response_headers = dict(resp.headers)
+                    response_body = await resp.read()
+                    # 返回:
+                    # HTTP/1.1 401 Unauthorized
+                    # Content-Type: application/json
+                    # WWW-Authenticate: Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:library/nginx:pull"
+                    if 'WWW-Authenticate' in response_headers:
+                        www_auth = response_headers['WWW-Authenticate']
+                        for key, value in routes.items():
+                            if value == "https://auth.docker.io/token":
+                                # 将返回的realm的域名替换为代理域名
+                                www_auth = www_auth.replace(value, f'https://{key}')
+                                response_headers['WWW-Authenticate'] = www_auth
+                                break
+                    # 删除分段传输的头, 这里应该有nginx转发来自动判断是否添加，原始服务器返回的该头针对当前nginx代理不一定匹配
+                    if 'Transfer-Encoding' in response_headers:
+                        del response_headers['Transfer-Encoding']
+                    logging.info(f'返回结果 【{resp.status}】\n【{method}】: {url}\n【headers】: {response_headers}')
+                    # logging.info(f'返回结果\n【{method}】: {url}\n【headers】: {response_headers}\n【content】: {response_body}')
+                    return Response(content=response_body, status_code=resp.status, headers=response_headers)
+                except Exception as e:
+                    logger.error(f"Error processing response: {e}")
+                    return JSONResponse({"error": "Internal Server Error"}, status_code=500)
+    except BaseException as e:
+        return JSONResponse({"error": repr(e)}, status_code=500)
 
 
 # 启动应用程序
