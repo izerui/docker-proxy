@@ -26,7 +26,7 @@ PROXY_URL = os.getenv("PROXY_URL", None)
 PROFILE = os.getenv("PROFILE", 'production')
 
 # 定义中央仓库
-cus_docker_hub_domain =  f"docker.{CUSTOM_DOMAIN}" if PROFILE == 'production' else f"chatpy-dev.{CUSTOM_DOMAIN}"
+cus_docker_hub_domain = f"docker.{CUSTOM_DOMAIN}" if PROFILE == 'production' else f"chatpy-dev.{CUSTOM_DOMAIN}"
 
 # 代理转发路径前缀匹配规则
 routes = {
@@ -51,6 +51,16 @@ reserved_headers = [
     'user-agent',
     'authorization',
     'accept',
+    'date',
+]
+
+# 忽略请求的header的key集合
+ignore_headers = [
+    'host',
+    'x-real-ip',
+    'x-forwarded-for',
+    'x-forwarded-proto',
+    'connection',
 ]
 
 
@@ -98,7 +108,9 @@ async def handle_request(request: Request, call_next):
         return await call_next(request)
 
     # 过滤headers保留reserved_headers中的key
-    headers = {key: headers[key] for key in reserved_headers if key in headers}
+    # headers = {key: headers[key] for key in reserved_headers if key in headers}
+    # 过滤headers忽略ignore_headers中的key
+    headers = {key: value for key, value in headers.items() if key not in ignore_headers}
 
     # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全
     # Example: repository:busybox:pull => repository:library/busybox:pull
@@ -109,9 +121,9 @@ async def handle_request(request: Request, call_next):
             splits = query_string.split(':')
             if len(splits) == 3 and '/' not in splits[1]:
                 splits[1] = f'library/{splits[1]}'
-            new_query_string = ':'.join(splits)
-            new_query_string = quote(new_query_string)
-            url = f'https://auth.docker.io/token?{new_query_string}'
+                new_query_string = ':'.join(splits)
+                new_query_string = quote(new_query_string)
+                url = f'https://auth.docker.io/token?{new_query_string}'
 
     # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
     # https://registry-1.docker.io/v2/nginx/manifests/latest
@@ -149,8 +161,8 @@ async def handle_request(request: Request, call_next):
                 # 删除分段传输的头, 这里应该有nginx转发来自动判断是否添加，原始服务器返回的该头针对当前nginx代理不一定匹配
                 if 'Transfer-Encoding' in response_headers:
                     del response_headers['Transfer-Encoding']
-                logging.info(
-                    f'返回结果\n【{method}】: {url}\n【headers】: {response_headers}\n')
+                logging.info(f'返回结果 【{resp.status}】\n【{method}】: {url}\n【headers】: {response_headers}')
+                # logging.info(f'返回结果\n【{method}】: {url}\n【headers】: {response_headers}\n【content】: {response_body}')
                 return Response(content=response_body, status_code=resp.status, headers=response_headers)
             except Exception as e:
                 logger.error(f"Error processing response: {e}")
