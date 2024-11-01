@@ -1,12 +1,15 @@
+import datetime
 import logging
 import os
 from urllib.parse import unquote, quote
 
 import aiohttp
+import jwt
 from aiohttp import ClientTimeout
 from aiohttp_socks import ProxyConnector
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from jwt import ExpiredSignatureError, DecodeError
 from starlette.responses import HTMLResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -79,6 +82,32 @@ async def read_item(request: Request):
     )
 
 
+# 从请求头中提取 JWT 令牌
+def valid_jwt_and_remove_from_headers(headers):
+    auth_header = headers.get('authorization', None)
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        try:
+            # 解码并验证令牌
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            # 获取当前时间
+            current_time = datetime.datetime.utcnow()
+            # 获取令牌中的过期时间
+            exp_time = datetime.datetime.utcfromtimestamp(decoded_token['exp'])
+            # 检查令牌是否已过期
+            if current_time > exp_time:
+                print("JWT 令牌已失效")
+                del headers["authorization"]
+            else:
+                print("JWT 令牌有效")
+        except ExpiredSignatureError:
+            del headers["authorization"]
+            print("JWT 令牌已过期")
+        except DecodeError:
+            del headers["authorization"]
+            print("JWT 令牌无效")
+    return headers
+
 # 处理所有传入的请求
 @app.middleware("http")
 async def handle_request(request: Request, call_next):
@@ -112,6 +141,8 @@ async def handle_request(request: Request, call_next):
         # headers = {key: headers[key] for key in reserved_headers if key in headers}
         # 过滤headers忽略ignore_headers中的key
         headers = {key: value for key, value in headers.items() if key not in ignore_headers}
+
+        headers = valid_jwt_and_remove_from_headers(headers)
 
         # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全
         # Example: repository:busybox:pull => repository:library/busybox:pull
