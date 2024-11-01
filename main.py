@@ -52,10 +52,8 @@ path_whitelist = [
 
 # 保留请求的header的key集合
 reserved_headers = [
-    'user-agent',
     'authorization',
     'accept',
-    'Date',
 ]
 
 # 忽略请求的header的key集合
@@ -139,9 +137,9 @@ async def handle_request(request: Request, call_next):
             return await call_next(request)
 
         # 过滤headers保留reserved_headers中的key
-        # headers = {key: headers[key] for key in reserved_headers if key in headers}
+        headers = {key: value for key, value in headers.items() if key.lower() in reserved_headers}
         # 过滤headers忽略ignore_headers中的key
-        headers = {key: value for key, value in headers.items() if key not in ignore_headers}
+        # headers = {key: value for key, value in headers.items() if key.lower() not in ignore_headers}
 
         headers = valid_jwt_and_remove_from_headers(headers)
 
