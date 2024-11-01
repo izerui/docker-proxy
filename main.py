@@ -55,7 +55,7 @@ reserved_headers = [
     'user-agent',
     'authorization',
     'accept',
-    'date',
+    'Date',
 ]
 
 # 忽略请求的header的key集合
