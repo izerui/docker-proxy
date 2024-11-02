@@ -89,7 +89,8 @@
         <p>为了加速 Docker 镜像拉取，你可以使用以下命令设置 registry mirror:</p>
         <pre><code id="registry-config">sudo tee /etc/docker/daemon.json &lt;&lt;EOF
 {
-    "registry-mirrors": ["https://docker.{{my_domain}}"]
+    "registry-mirrors": ["https://docker.{{my_domain}}"],
+    "insecure-registries": []
 }
 EOF
 # 配置完后需要重启 Docker 服务
