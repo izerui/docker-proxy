@@ -144,7 +144,7 @@ async def handle_request(request: Request, call_next):
         # docker中央仓库获取token需要将基础镜像增加前缀 library
         # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全,并且移除headers中的 Authenticate
         # Example: repository:busybox:pull => repository:library/busybox:pull
-        if url_parse.path == '/token':
+        if url_parse.netloc == 'auth.docker.io' and url_parse.path == '/token':
             if 'authorization' in headers:
                 del headers['authorization']
             if url_parse.query:
