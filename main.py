@@ -53,7 +53,6 @@ path_whitelist = [
 reserved_headers = [
     'authorization',
     'accept',
-    'user-agent',
     'accept-encoding',
 ]
 
