@@ -43,7 +43,8 @@ routes = {
 
 # 白名单路径不进行转发
 path_whitelist = [
-    '/'
+    '/',
+    '/favicon.ico'
 ]
 
 # 保留请求的header的key集合
