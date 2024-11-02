@@ -12,15 +12,15 @@ docker run -e CUSTOM_DOMAIN="xxx.com" -d -p 9000:8000 izerui/docker-proxy
 
 默认代理的仓库有:
 ```
-docker-auth.xxx.com --> auth.docker.io,
-docker.xxx.com --> registry-1.docker.io,
-quay.xxx.com --> quay.io,
-gcr.xxx.com --> gcr.io,
-k8s-gcr.xxx.com --> k8s.gcr.io,
-k8s.xxx.com --> registry.k8s.io,
-ghcr.xxx.com --> ghcr.io,
-cloudsmith.xxx.com --> docker.cloudsmith.io,
-ecr.xxx.com --> public.ecr.aws,
+docker-auth.xxx.com --> auth.docker.io
+docker.xxx.com --> registry-1.docker.io
+quay.xxx.com --> quay.io
+gcr.xxx.com --> gcr.io
+k8s-gcr.xxx.com --> k8s.gcr.io
+k8s.xxx.com --> registry.k8s.io
+ghcr.xxx.com --> ghcr.io
+cloudsmith.xxx.com --> docker.cloudsmith.io
+ecr.xxx.com --> public.ecr.aws
 ```
 
 
