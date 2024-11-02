@@ -36,15 +36,15 @@ cus_docker_hub_domain = f"docker.{CUSTOM_DOMAIN}" if PROFILE == 'production' els
 
 # 代理转发路径前缀匹配规则
 routes = {
-    f"{cus_docker_hub_domain}/token": "https://auth.docker.io/token",
-    f"{cus_docker_hub_domain}": "https://registry-1.docker.io",
-    f"quay.{CUSTOM_DOMAIN}": "https://quay.io",
-    f"gcr.{CUSTOM_DOMAIN}": "https://gcr.io",
-    f"k8s-gcr.{CUSTOM_DOMAIN}": "https://k8s.gcr.io",
-    f"k8s.{CUSTOM_DOMAIN}": "https://registry.k8s.io",
-    f"ghcr.{CUSTOM_DOMAIN}": "https://ghcr.io",
-    f"cloudsmith.{CUSTOM_DOMAIN}": "https://docker.cloudsmith.io",
-    f"ecr.{CUSTOM_DOMAIN}": "https://public.ecr.aws",
+    f"{cus_docker_hub_domain}/token": "auth.docker.io/token",
+    f"{cus_docker_hub_domain}": "registry-1.docker.io",
+    f"quay.{CUSTOM_DOMAIN}": "quay.io",
+    f"gcr.{CUSTOM_DOMAIN}": "gcr.io",
+    f"k8s-gcr.{CUSTOM_DOMAIN}": "k8s.gcr.io",
+    f"k8s.{CUSTOM_DOMAIN}": "registry.k8s.io",
+    f"ghcr.{CUSTOM_DOMAIN}": "ghcr.io",
+    f"cloudsmith.{CUSTOM_DOMAIN}": "docker.cloudsmith.io",
+    f"ecr.{CUSTOM_DOMAIN}": "public.ecr.aws",
 }
 
 # 白名单路径不进行转发
@@ -142,7 +142,7 @@ async def handle_request(request: Request, call_next):
             route_url = f'{request.url.scheme}://{route}'
             if url.startswith(route_url):
                 proxy = True
-                url = url.replace(route_url, routes[route])
+                url = url.replace(route_url, f'https://{routes[route]}')
                 pass
 
         # 未匹配转发
@@ -208,11 +208,12 @@ async def handle_request(request: Request, call_next):
                     if 'WWW-Authenticate' in response_headers:
                         www_auth = response_headers['WWW-Authenticate']
                         for key, value in routes.items():
-                            if value == "https://auth.docker.io/token":
-                                # 将返回的realm的域名替换为代理域名
-                                www_auth = www_auth.replace(value, f'https://{key}')
+                            if value in www_auth:
+                                # 将返回的realm的域名替换为代理域名,让docker或者contanerd访问自定义域名进行授权
+                                www_auth = www_auth.replace(value, key)
                                 response_headers['WWW-Authenticate'] = www_auth
                                 break
+
                     # 删除分段传输的头, 这里应该有nginx转发来自动判断是否添加，原始服务器返回的该头针对当前nginx代理不一定匹配
                     if 'Transfer-Encoding' in response_headers:
                         del response_headers['Transfer-Encoding']
