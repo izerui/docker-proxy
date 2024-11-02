@@ -201,6 +201,7 @@ async def handle_request(request: Request, call_next):
                             if value in www_auth:
                                 # 将返回的realm的域名替换为代理域名,让docker或者contanerd访问自定义域名进行授权
                                 www_auth = www_auth.replace(value, key, 1)
+                                response_headers['WWW-Authenticate-pre-modify'] = response_headers['WWW-Authenticate']
                                 response_headers['WWW-Authenticate'] = www_auth
                                 break
 
