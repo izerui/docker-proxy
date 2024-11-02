@@ -1,13 +1,13 @@
 import datetime
 import logging
 import os
-from urllib.parse import unquote, quote
+from urllib.parse import unquote, urlparse, quote
 
 import aiohttp
 import jwt
 from aiohttp import ClientTimeout
 from aiohttp_socks import ProxyConnector
-from colorama import Back, Style, Fore
+from colorama import Style, Fore
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from jwt import ExpiredSignatureError, DecodeError
@@ -113,7 +113,7 @@ def valid_jwt_and_remove_from_headers(headers):
 def pretty_headers(headers, title_name, title_value):
     pretty_headers_table = PrettyTable([title_name, title_value])
     for k, v in headers.items():
-        pretty_headers_table.add_row([k, f'{v[:100]}...' if len(v) > 100 else v])
+        pretty_headers_table.add_row([k, f'{v[:150]}...' if len(v) > 150 else v])
     return pretty_headers_table
 
 
@@ -137,6 +137,7 @@ async def handle_request(request: Request, call_next):
             logging.info(f'未代理转发\n【{method}】: {origin_url} \n【headers】: {origin_headers}')
             return await call_next(request)
 
+        # 根据路由进行匹配转发
         url = origin_url
         for route in routes:
             route_url = f'{request.url.scheme}://{route}'
@@ -145,6 +146,7 @@ async def handle_request(request: Request, call_next):
                 url = url.replace(route_url, routes[route])
                 pass
 
+        # 未匹配转发
         if not proxy:
             return await call_next(request)
 
@@ -152,21 +154,30 @@ async def handle_request(request: Request, call_next):
         headers = {key: value for key, value in origin_headers.items() if key.lower() in reserved_headers}
         # 过滤headers忽略ignore_headers中的key
         # headers = {key: value for key, value in origin_headers.items() if key.lower() not in ignore_headers}
+        # headers = valid_jwt_and_remove_from_headers(headers)
 
-        headers = valid_jwt_and_remove_from_headers(headers)
+        url_parse = urlparse(url)
 
-        # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全
+        # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全,并且移除headers中的 Authenticate
         # Example: repository:busybox:pull => repository:library/busybox:pull
-        if url.startswith('https://auth.docker.io/token'):
-            if request.scope['query_string']:
-                query_string = request.scope['query_string'].decode('utf-8')
-                query_string = unquote(query_string)
-                splits = query_string.split(':')
-                if len(splits) == 3 and '/' not in splits[1]:
-                    splits[1] = f'library/{splits[1]}'
-                    new_query_string = ':'.join(splits)
-                    new_query_string = quote(new_query_string)
-                    url = f'https://auth.docker.io/token?{new_query_string}'
+        if url_parse.netloc == 'auth.docker.io' and url_parse.path == '/token':
+            if 'authorization' in headers:
+                del headers['authorization']
+            if url_parse.query:
+                query_string = url_parse.query
+                params = query_string.split('&')
+                for index, param in enumerate(params):
+                    kv = param.split('=')
+                    if kv[0] == 'scope':
+                        v = kv[1]
+                        v = unquote(v)
+                        if '/' not in v:
+                            vsplit = v.split(':')
+                            vsplit[1] = f'library/{vsplit[1]}'
+                            new_scope = f'{kv[0]}={quote(":".join(vsplit))}'
+                            params[index] = new_scope
+                            query_string = '&'.join(params)
+                            url = f'{url_parse.scheme}://{url_parse.netloc}{url_parse.path}?{query_string}'
 
         # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
         # https://registry-1.docker.io/v2/nginx/manifests/latest
@@ -208,7 +219,7 @@ async def handle_request(request: Request, call_next):
                         del response_headers['Transfer-Encoding']
 
                     logging.info(
-                        f'\n【请求地址】{method}: {str(request.url)} {"200 OK" if resp.status == 200 else resp.status}\n【转发地址】{method}: {url} {"200 OK" if resp.status == 200 else resp.status}\n【返回内容】: {f"{response_body[:100]}..." if len(response_body) > 100 else response_body}\n{Fore.CYAN}{pretty_headers(origin_headers, "原始请求头", "原始请求值")}\n{pretty_headers(headers, "代理请求头", "代理请求值")}\n{pretty_headers(response_headers, "响应头", "响应值")}{Style.RESET_ALL}')
+                        f'\n【请求地址】{method}: {str(request.url)} {"200 OK" if resp.status == 200 else resp.status}\n【转发地址】{method}: {url} {"200 OK" if resp.status == 200 else resp.status}\n【返回内容】: {f"{response_body[:150]}..." if len(response_body) > 150 else response_body}\n{Fore.CYAN}{pretty_headers(origin_headers, "原始请求头", "原始请求值")}\n{pretty_headers(headers, "代理请求头", "代理请求值")}\n{pretty_headers(response_headers, "响应头", "响应值")}{Style.RESET_ALL}')
                     return Response(content=response_body, status_code=resp.status, headers=response_headers)
                 except Exception as e:
                     logger.error(f"Error processing response: {e}")
