@@ -28,3 +28,7 @@ pip freeze > requirements.txt
 5. 然后客户端会将获取的token字段值作为head头 authorization 授权附带上去去请求镜像，比如： https://registry-1.docker.io/v2/bitnami/mysql/manifests/latest head头: authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsIng1YyI6WyJNSUlFRmpD...
 
 注意： docker仓库返回的授权域名与仓库域名不一致。
+
+
+这里有一个免费的镜像代理网站可以直接使用
+https://dockerpull.org/
