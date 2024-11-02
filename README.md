@@ -1,6 +1,9 @@
 # docker proxy
 
 docker 代理转发服务，解决国内镜像拉取问题。
+前提你得有一台海外服务器，配置不要太高，只要有流量即可。
+然后将自己的泛域名指向该服务器，并配置好ssl和转发规则(nginx转docker本地监听端口)。
+或者将下面指定的域名指向该服务器也行。
 ```
 docker rmi izerui/docker-proxy
 docker pull izerui/docker-proxy
