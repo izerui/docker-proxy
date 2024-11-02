@@ -207,7 +207,7 @@ async def handle_request(request: Request, call_next):
                         del response_headers['Transfer-Encoding']
 
                     logging.info(
-                        f'\n【请求地址】{method}: {str(request.url)} {"200 OK" if resp.status == 200 else resp.status}\n【转发地址】{method}: {url} {"200 OK" if resp.status == 200 else resp.status}\n【返回内容】: {f"{response_body[:150]}..." if len(response_body) > 150 else response_body}\n{Fore.CYAN}{pretty_headers(origin_headers, "原始请求头", "原始请求值")}\n{pretty_headers(headers, "代理请求头", "代理请求值")}\n{pretty_headers(response_headers, "响应头", "响应值")}{Style.RESET_ALL}')
+                        f'\n【请求地址】{method}: {str(request.url)} {"200 OK" if resp.status == 200 else resp.status}\n【转发地址】{method}: {url} {"200 OK" if resp.status == 200 else resp.status}\n{Fore.CYAN}【返回内容】: {f"{response_body[:150]}..." if len(response_body) > 150 else response_body}\n{pretty_headers(origin_headers, "原始请求头", "原始请求值")}\n{pretty_headers(headers, "代理请求头", "代理请求值")}\n{pretty_headers(response_headers, "响应头", "响应值")}{Style.RESET_ALL}')
                     return Response(content=response_body, status_code=resp.status, headers=response_headers)
                 except Exception as e:
                     logger.error(f"Error processing response: {e}")
