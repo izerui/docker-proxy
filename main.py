@@ -67,11 +67,6 @@ ignore_headers = [
     'x-forwarded-proto',
 ]
 
-
-def is_docker_hub_pull(method, url):
-    return method == 'get' and url.startswith("https://registry-1.docker.io/")
-
-
 app.mount("/rag/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
