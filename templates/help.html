@@ -90,7 +90,6 @@
         <pre><code id="registry-config">sudo tee /etc/docker/daemon.json &lt;&lt;EOF
 {
     "registry-mirrors": ["https://docker.{{my_domain}}"],
-    "insecure-registries": []
 }
 EOF
 # 配置完后需要重启 Docker 服务
