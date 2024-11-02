@@ -5,6 +5,8 @@
 * `pip install aiohttp-socks`
 * `pip install jinja2`
 * `pip install pyjwt`
+* `pip install prettytable`
+* `pip install colorama`
 
 
 依赖管理:

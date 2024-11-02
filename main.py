@@ -7,9 +7,11 @@ import aiohttp
 import jwt
 from aiohttp import ClientTimeout
 from aiohttp_socks import ProxyConnector
+from colorama import Back, Style, Fore
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from jwt import ExpiredSignatureError, DecodeError
+from prettytable import PrettyTable
 from starlette.responses import HTMLResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -54,6 +56,7 @@ path_whitelist = [
 reserved_headers = [
     'authorization',
     'accept',
+    'accept-encoding',
 ]
 
 # 忽略请求的header的key集合
@@ -106,6 +109,14 @@ def valid_jwt_and_remove_from_headers(headers):
             print("JWT 令牌无效")
     return headers
 
+
+def pretty_headers(headers, title_name, title_value):
+    pretty_headers_table = PrettyTable([title_name, title_value])
+    for k, v in headers.items():
+        pretty_headers_table.add_row([k, f'{v[:100]}...' if len(v) > 100 else v])
+    return pretty_headers_table
+
+
 # 碰到的问题: https://github.com/docker/hub-feedback/issues/1636
 # 处理所有传入的请求
 @app.middleware("http")
@@ -113,19 +124,20 @@ async def handle_request(request: Request, call_next):
     try:
         # 获取请求体
         method = request.method.lower()
-        url = str(request.url)
+        origin_url = str(request.url)
         body = await request.body()
         # 原始字典
-        headers = dict(request.headers)
+        origin_headers = dict(request.headers)
         proxy = False
 
-        logging.info(f'接收请求\n【{method}】: {url} \n【headers】: {headers}')
+        # logging.info(f'接收请求\n【{method}】: {url} \n【headers】: {headers}')
 
         # 白名单中的path不进行转发
         if request.url.path in path_whitelist:
-            logging.info(f'未代理转发\n【{method}】: {url} \n【headers】: {headers}')
+            logging.info(f'未代理转发\n【{method}】: {origin_url} \n【headers】: {origin_headers}')
             return await call_next(request)
 
+        url = origin_url
         for route in routes:
             route_url = f'{request.url.scheme}://{route}'
             if url.startswith(route_url):
@@ -137,9 +149,9 @@ async def handle_request(request: Request, call_next):
             return await call_next(request)
 
         # 过滤headers保留reserved_headers中的key
-        headers = {key: value for key, value in headers.items() if key.lower() in reserved_headers}
+        headers = {key: value for key, value in origin_headers.items() if key.lower() in reserved_headers}
         # 过滤headers忽略ignore_headers中的key
-        # headers = {key: value for key, value in headers.items() if key.lower() not in ignore_headers}
+        # headers = {key: value for key, value in origin_headers.items() if key.lower() not in ignore_headers}
 
         headers = valid_jwt_and_remove_from_headers(headers)
 
@@ -153,8 +165,8 @@ async def handle_request(request: Request, call_next):
                 if len(splits) == 3 and '/' not in splits[1]:
                     splits[1] = f'library/{splits[1]}'
                     new_query_string = ':'.join(splits)
-                    # new_query_string = quote(new_query_string)
-                    url = quote(f'https://auth.docker.io/token?{new_query_string}')
+                    new_query_string = quote(new_query_string)
+                    url = f'https://auth.docker.io/token?{new_query_string}'
 
         # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
         # https://registry-1.docker.io/v2/nginx/manifests/latest
@@ -194,14 +206,15 @@ async def handle_request(request: Request, call_next):
                     # 删除分段传输的头, 这里应该有nginx转发来自动判断是否添加，原始服务器返回的该头针对当前nginx代理不一定匹配
                     if 'Transfer-Encoding' in response_headers:
                         del response_headers['Transfer-Encoding']
+
                     logging.info(
-                        f'代理转发 【{resp.status}】\n【{method}】: {url}\n【request-headers】:{headers}\n【response-headers】: {response_headers}')
-                    # logging.info(f'返回结果\n【{method}】: {url}\n【headers】: {response_headers}\n【content】: {response_body}')
+                        f'\n【请求地址】{method}: {str(request.url)} {"200 OK" if resp.status == 200 else resp.status}\n【转发地址】{method}: {url} {"200 OK" if resp.status == 200 else resp.status}\n【返回内容】: {f"{response_body[:100]}..." if len(response_body) > 100 else response_body}\n{Fore.CYAN}{pretty_headers(origin_headers, "原始请求头", "原始请求值")}\n{pretty_headers(headers, "代理请求头", "代理请求值")}\n{pretty_headers(response_headers, "响应头", "响应值")}{Style.RESET_ALL}')
                     return Response(content=response_body, status_code=resp.status, headers=response_headers)
                 except Exception as e:
                     logger.error(f"Error processing response: {e}")
                     return JSONResponse({"error": "Internal Server Error"}, status_code=500)
     except BaseException as e:
+        logger.exception(e)
         return JSONResponse({"error": repr(e)}, status_code=500)
 
 
