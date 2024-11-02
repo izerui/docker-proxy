@@ -24,6 +24,9 @@ ecr.xxx.com --> public.ecr.aws,
 ```
 
 
+
+下面是开发相关的:
+
 * `pip install fastapi`
 * `pip install uvicorn[standard]`
 * `pip install aiohttp`
