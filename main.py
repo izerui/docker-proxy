@@ -25,19 +25,16 @@ app = FastAPI()
 # 从环境变量中获取自定义域名、模式和目标上游服务器
 CUSTOM_DOMAIN = os.getenv("CUSTOM_DOMAIN", "serv999.com")
 
-# 从环境变量中获取代理 URL
+# 从环境变量中获取代理 URL，本地开发调试需要设置代理，否则无法正常访问docker、gcr等外网仓库
 PROXY_URL = os.getenv("PROXY_URL", None)
 
 # 环境
 PROFILE = os.getenv("PROFILE", 'production')
 
-# 定义中央仓库
-cus_docker_hub_domain = f"docker.{CUSTOM_DOMAIN}" if PROFILE == 'production' else f"chatpy-dev.{CUSTOM_DOMAIN}"
-
 # 代理转发路径前缀匹配规则
 routes = {
-    f"{cus_docker_hub_domain}/token": "auth.docker.io/token",
-    f"{cus_docker_hub_domain}": "registry-1.docker.io",
+    f"docker-auth.{CUSTOM_DOMAIN}": "auth.docker.io",
+    f"docker.{CUSTOM_DOMAIN}": "registry-1.docker.io",
     f"quay.{CUSTOM_DOMAIN}": "quay.io",
     f"gcr.{CUSTOM_DOMAIN}": "gcr.io",
     f"k8s-gcr.{CUSTOM_DOMAIN}": "k8s.gcr.io",
@@ -152,9 +149,10 @@ async def handle_request(request: Request, call_next):
 
         url_parse = urlparse(url)
 
+        # docker中央仓库获取token需要将基础镜像增加前缀 library
         # 处理获取token的请求参数,如果镜像是基础镜像并且未带library则补全,并且移除headers中的 Authenticate
         # Example: repository:busybox:pull => repository:library/busybox:pull
-        if url_parse.netloc == 'auth.docker.io' and url_parse.path == '/token':
+        if url_parse.path == '/token':
             if 'authorization' in headers:
                 del headers['authorization']
             if url_parse.query:
@@ -173,7 +171,12 @@ async def handle_request(request: Request, call_next):
                             query_string = '&'.join(params)
                             url = f'{url_parse.scheme}://{url_parse.netloc}{url_parse.path}?{query_string}'
 
-        # 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
+        # 兼容其他仓库的token验证, 其他仓库不需要增加library前缀
+        if url_parse.path == '/v2/auth':
+            if 'authorization' in headers:
+                del headers['authorization']
+
+        # docker中央仓库需要 处理获取镜像的地址,如果是基础镜像并且未带library，则补全
         # https://registry-1.docker.io/v2/nginx/manifests/latest
         # Example: /v2/busybox/manifests/latest => /v2/library/busybox/manifests/latest
         docker_registry_prefix_url = 'https://registry-1.docker.io/v2/'
@@ -205,7 +208,7 @@ async def handle_request(request: Request, call_next):
                         for key, value in routes.items():
                             if value in www_auth:
                                 # 将返回的realm的域名替换为代理域名,让docker或者contanerd访问自定义域名进行授权
-                                www_auth = www_auth.replace(value, key)
+                                www_auth = www_auth.replace(value, key, 1)
                                 response_headers['WWW-Authenticate'] = www_auth
                                 break
 
