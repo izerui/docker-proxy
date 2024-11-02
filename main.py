@@ -134,7 +134,6 @@ async def handle_request(request: Request, call_next):
 
         # 白名单中的path不进行转发
         if request.url.path in path_whitelist:
-            logging.info(f'未代理转发\n【{method}】: {origin_url} \n【headers】: {origin_headers}')
             return await call_next(request)
 
         # 根据路由进行匹配转发
