@@ -34,8 +34,7 @@ PROFILE = os.getenv("PROFILE", 'production')
 # 代理转发路径前缀匹配规则
 routes = {
     f"docker-auth.{CUSTOM_DOMAIN}": "auth.docker.io",
-    f"docker.{CUSTOM_DOMAIN}": "registry-1.docker.io",
-    f"quay.{CUSTOM_DOMAIN}": "quay.io",
+    f"docker.{CUSTOM_DOMAIN}": "quay.io",
     f"gcr.{CUSTOM_DOMAIN}": "gcr.io",
     f"k8s-gcr.{CUSTOM_DOMAIN}": "k8s.gcr.io",
     f"k8s.{CUSTOM_DOMAIN}": "registry.k8s.io",
@@ -53,6 +52,7 @@ path_whitelist = [
 reserved_headers = [
     'authorization',
     'accept',
+    'user-agent',
     'accept-encoding',
 ]
 
@@ -131,6 +131,8 @@ async def handle_request(request: Request, call_next):
 
         # 未匹配转发
         if not proxy:
+            logging.info(
+                f'\n【请求地址】{method}: {str(request.url)}\n{Fore.CYAN}{pretty_headers(origin_headers, "请求头", "请求值")}{Style.RESET_ALL}')
             return await call_next(request)
 
         # 过滤headers保留reserved_headers中的key

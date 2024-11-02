@@ -28,3 +28,18 @@ pip freeze > requirements.txt
 5. 然后客户端会将获取的token字段值作为head头 authorization 授权附带上去去请求镜像，比如： https://registry-1.docker.io/v2/bitnami/mysql/manifests/latest head头: authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsIng1YyI6WyJNSUlFRmpD...
 
 注意： docker仓库返回的授权域名与仓库域名不一致。
+
+使用自定义域名拉取镜像如果碰到签名问题，则可以考虑关闭
+禁用签名验证：如果您信任源镜像，可以临时禁用签名验证。
+
+编辑或创建 /etc/docker/daemon.json 文件，添加如下配置：
+```
+{
+  "disable-legacy-registry": true,
+  "signature-verification": false
+}
+```
+然后重启 Docker 守护进程：
+```
+sudo systemctl restart docker
+```
