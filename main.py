@@ -56,14 +56,6 @@ reserved_headers = [
     'accept-encoding',
 ]
 
-# 忽略请求的header的key集合
-ignore_headers = [
-    'host',
-    'x-real-ip',
-    'x-forwarded-for',
-    'x-forwarded-proto',
-]
-
 app.mount("/rag/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -109,7 +101,7 @@ def pretty_headers(headers, title_name, title_value):
     return pretty_headers_table
 
 
-# 碰到的问题: https://github.com/docker/hub-feedback/issues/1636
+# 碰到的问题: https://github.com/docker/hub-feedback/issues/1636 , 实际解决是因为url地址编码不对，应该只针对参数值进行编码
 # 处理所有传入的请求
 @app.middleware("http")
 async def handle_request(request: Request, call_next):
@@ -143,8 +135,6 @@ async def handle_request(request: Request, call_next):
 
         # 过滤headers保留reserved_headers中的key
         headers = {key: value for key, value in origin_headers.items() if key.lower() in reserved_headers}
-        # 过滤headers忽略ignore_headers中的key
-        # headers = {key: value for key, value in origin_headers.items() if key.lower() not in ignore_headers}
         # headers = valid_jwt_and_remove_from_headers(headers)
 
         url_parse = urlparse(url)
