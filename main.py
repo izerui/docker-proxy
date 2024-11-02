@@ -28,9 +28,6 @@ CUSTOM_DOMAIN = os.getenv("CUSTOM_DOMAIN", "serv999.com")
 # 从环境变量中获取代理 URL，本地开发调试需要设置代理，否则无法正常访问docker、gcr等外网仓库
 PROXY_URL = os.getenv("PROXY_URL", None)
 
-# 环境
-PROFILE = os.getenv("PROFILE", 'production')
-
 # 代理转发路径前缀匹配规则
 routes = {
     f"docker-auth.{CUSTOM_DOMAIN}": "auth.docker.io",
