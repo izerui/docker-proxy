@@ -60,3 +60,4 @@ pip freeze > requirements.txt
 
 这里有一个免费的镜像代理网站可以直接使用
 https://dockerpull.org/
+https://dockermirror.com/zh
