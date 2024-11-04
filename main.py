@@ -168,9 +168,9 @@ async def handle_request(request: Request, call_next):
         # 过滤headers保留reserved_headers中的key
         headers = {key: value for key, value in origin_headers.items() if key.lower() in reserved_headers}
         # headers = valid_jwt_and_remove_from_headers(headers)
-        random_ip = random_ipv4()
-        headers['x-forwarded-for'] = random_ip
-        headers['x-real-ip'] = random_ip
+        # random_ip = random_ipv4()
+        # headers['x-forwarded-for'] = random_ip
+        # headers['x-real-ip'] = random_ip
 
         url_parse = urlparse(url)
 
