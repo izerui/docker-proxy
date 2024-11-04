@@ -1,6 +1,8 @@
 import datetime
+import ipaddress
 import logging
 import os
+import random
 from urllib.parse import unquote, urlparse, quote
 
 import aiohttp
@@ -92,6 +94,33 @@ def valid_jwt_and_remove_from_headers(headers):
     return headers
 
 
+def random_ipv4():
+    """从列表seeds中随机生成一个ipv4地址并返回，要求如下：
+    1. seeds列表中的值可以为ip地址、ip区间(A.B.C.D-A.B.C.D)、ip+掩码格式(A.B.C.D/M)。
+    2. 生成的随机ip地址必须满足seeds中表示的ip范围内选择。
+    """
+    ip_seeds = [
+        "152.32.0.0/16",
+        "222.246.0.0/16",
+        "202.103.64.0-202.103.127.255"
+    ]
+    ipinfo = random.choice(ip_seeds)
+    if "-" in ipinfo:
+        # IP区间  A.B.C.D-A.B.C.D
+        ip_start, ip_end = ipinfo.split("-")
+        # ip区间最小值
+        ip_min = int(ipaddress.ip_address(ip_start))
+        # ip区间最大值
+        ip_max = int(ipaddress.ip_address(ip_end))
+        return str(ipaddress.ip_address(random.randint(ip_min, ip_max)))
+    elif "/" in ipinfo:
+        # IP掩码 A.B.C.D/M
+        return str(random.choice(list(ipaddress.ip_network(ipinfo))))
+    else:
+        # IP
+        return ipinfo
+
+
 def pretty_headers(headers, title_name, title_value):
     pretty_headers_table = PrettyTable([title_name, title_value])
     for k, v in headers.items():
@@ -139,6 +168,9 @@ async def handle_request(request: Request, call_next):
         # 过滤headers保留reserved_headers中的key
         headers = {key: value for key, value in origin_headers.items() if key.lower() in reserved_headers}
         # headers = valid_jwt_and_remove_from_headers(headers)
+        random_ip = random_ipv4()
+        headers['x-forwarded-for'] = random_ip
+        headers['x-real-ip'] = random_ip
 
         url_parse = urlparse(url)
 
