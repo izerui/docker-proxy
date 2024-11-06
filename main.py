@@ -144,12 +144,12 @@ async def handle_request(request: Request, call_next):
 
         # logging.info(f'接收请求\n【{method}】: {url} \n【headers】: {headers}')
 
-        if request.url.netloc not in routes:
-            return HTMLResponse(content='get out!!!\n 滚!!!', status_code=403)
-
         # 白名单中的path不进行转发
         if request.url.path in path_whitelist:
             return await call_next(request)
+
+        if request.url.netloc not in routes:
+            return HTMLResponse(content='get out!!!\n 滚!!!', status_code=403)
 
         # 根据路由进行匹配转发
         url = origin_url
