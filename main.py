@@ -100,6 +100,7 @@ def pretty_headers(headers, title_name, title_value):
         pretty_headers_table.add_row([k, f'{v[:150]}...' if len(v) > 150 else v])
     return pretty_headers_table
 
+
 # 代理转发get请求
 @app.get("/proxy")
 async def proxy(url: str = Query(alias='url', description='代理请求地址')):
