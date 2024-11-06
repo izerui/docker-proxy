@@ -1,8 +1,6 @@
 import datetime
-import ipaddress
 import logging
 import os
-import random
 from urllib.parse import unquote, urlparse, quote
 
 import aiohttp
@@ -11,6 +9,7 @@ from aiohttp import ClientTimeout
 from aiohttp_socks import ProxyConnector
 from colorama import Style, Fore
 from fastapi import FastAPI, Request, Response
+from fastapi.params import Query
 from fastapi.responses import JSONResponse
 from jwt import ExpiredSignatureError, DecodeError
 from prettytable import PrettyTable
@@ -46,7 +45,8 @@ routes = {
 # 白名单路径不进行转发
 path_whitelist = [
     '/',
-    '/favicon.ico'
+    '/favicon.ico',
+    '/proxy',
 ]
 
 # 保留请求的header的key集合
@@ -94,38 +94,36 @@ def valid_jwt_and_remove_from_headers(headers):
     return headers
 
 
-def random_ipv4():
-    """从列表seeds中随机生成一个ipv4地址并返回，要求如下：
-    1. seeds列表中的值可以为ip地址、ip区间(A.B.C.D-A.B.C.D)、ip+掩码格式(A.B.C.D/M)。
-    2. 生成的随机ip地址必须满足seeds中表示的ip范围内选择。
-    """
-    ip_seeds = [
-        "152.32.0.0/16",
-        "222.246.0.0/16",
-        "202.103.64.0-202.103.127.255"
-    ]
-    ipinfo = random.choice(ip_seeds)
-    if "-" in ipinfo:
-        # IP区间  A.B.C.D-A.B.C.D
-        ip_start, ip_end = ipinfo.split("-")
-        # ip区间最小值
-        ip_min = int(ipaddress.ip_address(ip_start))
-        # ip区间最大值
-        ip_max = int(ipaddress.ip_address(ip_end))
-        return str(ipaddress.ip_address(random.randint(ip_min, ip_max)))
-    elif "/" in ipinfo:
-        # IP掩码 A.B.C.D/M
-        return str(random.choice(list(ipaddress.ip_network(ipinfo))))
-    else:
-        # IP
-        return ipinfo
-
-
 def pretty_headers(headers, title_name, title_value):
     pretty_headers_table = PrettyTable([title_name, title_value])
     for k, v in headers.items():
         pretty_headers_table.add_row([k, f'{v[:150]}...' if len(v) > 150 else v])
     return pretty_headers_table
+
+# 代理转发get请求
+@app.get("/proxy")
+async def proxy(url: str = Query(alias='url', description='代理请求地址')):
+    connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
+    async with (aiohttp.ClientSession(
+            connector=connector,
+            timeout=ClientTimeout(total=300, connect=60, sock_read=300, sock_connect=300, ceil_threshold=300),
+    ) as session):
+        async with session.get(url=url, allow_redirects=True, max_redirects=50) as resp:
+            try:
+                response_headers = dict(resp.headers)
+                response_body = await resp.read()
+                # 删除分段传输的头, 这里应该有nginx转发来自动判断是否添加，原始服务器返回的该头针对当前nginx代理不一定匹配
+                if 'Transfer-Encoding' in response_headers:
+                    del response_headers['Transfer-Encoding']
+                if 'Content-Length' in response_headers:
+                    del response_headers['Content-Length']
+
+                logging.info(
+                    f'\n【请求转发地址】get: {url} {"200 OK" if resp.status == 200 else resp.status}\n{Fore.CYAN}【返回内容】: {f"{response_body[:150]}..." if len(response_body) > 150 else response_body}\n{pretty_headers(response_headers, "响应头", "响应值")}{Style.RESET_ALL}')
+                return Response(content=response_body, status_code=resp.status, headers=response_headers)
+            except Exception as e:
+                logger.error(f"Error processing response: {e}")
+                return JSONResponse({"error": "Internal Server Error"}, status_code=500)
 
 
 # 碰到的问题: https://github.com/docker/hub-feedback/issues/1636 , 实际解决是因为url地址编码不对，应该只针对参数值进行编码
