@@ -109,6 +109,8 @@ async def proxy(url: str = Query(alias='url', description='代理请求地址'))
             connector=connector,
             timeout=ClientTimeout(total=300, connect=60, sock_read=300, sock_connect=300, ceil_threshold=300),
     ) as session):
+        logging.info(
+            f'\n【请求地址】get: {url}')
         async with session.get(url=url, allow_redirects=True, max_redirects=50) as resp:
             try:
                 response_headers = dict(resp.headers)
@@ -120,7 +122,7 @@ async def proxy(url: str = Query(alias='url', description='代理请求地址'))
                     del response_headers['Content-Length']
 
                 logging.info(
-                    f'\n【请求转发地址】get: {url} {"200 OK" if resp.status == 200 else resp.status}\n{Fore.CYAN}【返回内容】: {f"{response_body[:150]}..." if len(response_body) > 150 else response_body}\n{pretty_headers(response_headers, "响应头", "响应值")}{Style.RESET_ALL}')
+                    f'\n【转发地址】get: {url} {"200 OK" if resp.status == 200 else resp.status}\n{Fore.CYAN}【返回内容】: {f"{response_body[:150]}..." if len(response_body) > 150 else response_body}\n{pretty_headers(response_headers, "响应头", "响应值")}{Style.RESET_ALL}')
                 return Response(content=response_body, status_code=resp.status, headers=response_headers)
             except Exception as e:
                 logger.error(f"Error processing response: {e}")
