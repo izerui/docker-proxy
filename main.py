@@ -101,7 +101,7 @@ def pretty_headers(headers, title_name, title_value):
     return pretty_headers_table
 
 
-# 代理转发get请求
+# 代理转发get请求,作为跳板代理下载器，解决国内需要翻墙才能下载的资源
 @app.get("/proxy")
 async def proxy(url: str = Query(alias='url', description='代理请求地址')):
     connector = ProxyConnector.from_url(PROXY_URL) if PROXY_URL else None
